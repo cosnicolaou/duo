@@ -199,6 +199,7 @@ def _train(diffusion_model, config, logger, tokenizer):
   else:
     model = diffusion_model(config, tokenizer=valid_ds.tokenizer)
 
+  print(model)
   trainer = hydra.utils.instantiate(
     config.trainer,
     default_root_dir=os.getcwd(),

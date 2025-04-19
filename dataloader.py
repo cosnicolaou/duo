@@ -434,7 +434,10 @@ def get_dataset(dataset_name,
     LOGGER.info(f'Loading data from: {_path}')
     return datasets.load_from_disk(_path).with_format('torch')
   LOGGER.info(f'Generating new data at: {_path}')
-  LOGGER.info(f'{streaming=}')  
+  LOGGER.info(f'{streaming=}')
+
+
+  print(f"dataset_name: {dataset_name}")
 
   crop_train = dataset_name == 'text8-crop'
   if mode == 'train' and crop_train:
@@ -517,6 +520,7 @@ def get_dataset(dataset_name,
       vocab_size=256,
     )
   else:
+    print(f"load dataset name: {dataset_name}")
     dataset = datasets.load_dataset(
       dataset_name,
       cache_dir=cache_dir,
