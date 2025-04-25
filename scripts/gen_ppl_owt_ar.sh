@@ -12,7 +12,8 @@
 #SBATCH --open-mode=append            # Do not overwrite logs
 #SBATCH --requeue                     # Requeue upon preemption
 
-checkpoint_path=/share/kuleshov/ssahoo/textdiffusion/text-diffusion-exp-v4-AgBZrc-small-ar-param-ar_data-openwebtext-split_seqlen-1024_maxs-1300001_bs-512/checkpoints
+checkpoint_path=/cs224u/cache/duo-checkpoints
+
 seed=1
 
 export HYDRA_FULL_ERROR=1
@@ -25,7 +26,7 @@ srun python -u -m main \
   data=openwebtext-split \
   algo=ar \
   model=small \
-  eval.checkpoint_path=$checkpoint_path/last.ckpt \
+  eval.checkpoint_path=$checkpoint_path/ar.ckpt \
   sampling.num_sample_batches=100 \
   +wandb.offline=true \
   eval.generated_samples_path=$checkpoint_path/$seed-ckpt-last.json

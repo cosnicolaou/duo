@@ -197,6 +197,7 @@ class TimestepEmbedder(nn.Module):
     """
     # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py
     half = dim // 2
+
     freqs = torch.exp(
       - math.log(max_period)
       * torch.arange(start=0, end=half, dtype=torch.float32, device=t.device)
@@ -467,8 +468,10 @@ class DIT(nn.Module, huggingface_hub.PyTorchModelHubMixin):
     else:
       return  bias_dropout_add_scale_fused_inference
 
-  def forward(self, x, sigma):
+  def forward(self, x, sigma, prompt_embed=None):
     x = self.vocab_embed(x)
+    if prompt_embed is not None:
+      x = x + prompt_embed
     if self.causal:
       t_cond = None
     else:

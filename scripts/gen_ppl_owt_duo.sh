@@ -24,8 +24,7 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-checkpoint_path=/share/kuleshov/ssahoo/flow-ode/distil-distil-vjrpZb-distillation-OWT/checkpoints
-ckpt=0-50000
+checkpoint_path=/cs224u/cache/duo-checkpoints
 
 steps=${steps:-32}
 seed=${seed:-1}

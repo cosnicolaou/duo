@@ -11,6 +11,8 @@ import torch.nn.functional as F
 import trainer_base
 import utils
 
+import time
+from tqdm import tqdm
 
 class AR(trainer_base.TrainerBase):
   def __init__(self, config, tokenizer):
@@ -38,7 +40,7 @@ class AR(trainer_base.TrainerBase):
     return input_tokens, output_tokens, valid_tokens
 
   def nll(self, input_tokens, output_tokens,
-          current_accumulation_step):
+          current_accumulation_step=None, train_mode=False):
     del current_accumulation_step
     output = self.backbone(input_tokens, None)
     output[:, :, self.mask_index] = self.neg_infinity
@@ -47,6 +49,7 @@ class AR(trainer_base.TrainerBase):
       -1, output_tokens[:, :, None])[:, :, 0]
 
   def generate_samples(self, num_samples, **kwargs):
+    print(f"algo: AR generate_samples: num_samples: {num_samples}")
     # precompute token buffer
     num_pred_tokens = self.num_tokens - 1
     x = torch.zeros(
@@ -60,12 +63,15 @@ class AR(trainer_base.TrainerBase):
              .to(self.device))
     if self.config.sampling.use_float64:
       noise = noise.to(torch.float64)
-    for i in range(num_pred_tokens):
+    start_time = time.time()
+    for i in tqdm(range(num_pred_tokens)):
       output = self.backbone(x[:, :i + 1], None)
       output[:, :, self.mask_index] = self.neg_infinity
       output = output.log_softmax(-1)
       y = (output[:, -1, :] + noise[:, i, :]).argmax(-1)
       x[:, i + 1] = y
+    end_time = time.time()
+    print(f"algo: AR generate_samples: time: {end_time - start_time} {x.size(0)*x.size(1)} tokens {x.shape}")
     return x
 
   def _process_sigma(self, sigma):
@@ -370,7 +376,7 @@ class DUO_BASE(trainer_base.UniformState):
     return diffusion_loss
 
   def _ancestral_update(self, x, t, dt, p_x0=None,
-                   noise_removal_step=False):
+                   noise_removal_step=False, prompt_embed=None):
     del p_x0
     _, alpha_t = self.noise(t)
     if noise_removal_step:
@@ -381,13 +387,14 @@ class DUO_BASE(trainer_base.UniformState):
     assert alpha_t.ndim == 2
     
     q_xs = self._compute_posterior(
-      x=self.forward(x, sigma_t).exp(),
+      x=self.forward(x, sigma_t, prompt_embed=prompt_embed).exp(),
       xt=x,
       alpha_s=alpha_s,
       alpha_t=alpha_t)
     if self.p_nucleus < 1:
       q_xs = utils.top_k_top_p_filtering(
         q_xs.log(), top_p=self.p_nucleus)
+      
     return None, trainer_base.sample_categorical(q_xs)
 
 

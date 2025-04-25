@@ -28,8 +28,8 @@ echo "  Steps: $steps"
 echo "  Seed: $seed"
 
 export HYDRA_FULL_ERROR=1
-checkpoint_path=/share/kuleshov/ssahoo/textdiffusion/text-diffusion-exp-v4-nBm2gE-small-param-sedd_data-openwebtext-split_seqlen-1024_maxs-1300001_bs-512/checkpoints
-ckpt=last
+checkpoint_path=/cs224u/cache/duo-checkpoints
+ckpt=sedd
 
 srun python -u -m main \
   mode=sample_eval \
@@ -44,5 +44,5 @@ srun python -u -m main \
   sampling.num_sample_batches=100 \
   sampling.steps=$steps \
   sampling.predictor=analytic \
-  eval.generated_samples_path=$checkpoint_path/$seed-$steps-ckpt-$ckpt.json \
+  eval.generated_samples_path=$checkpoint_path/sedd-$seed-$steps-ckpt-$ckpt.json \
   +wandb.offline=true

@@ -13,6 +13,9 @@ import metrics
 import models
 import utils
 
+import time
+from tqdm import tqdm
+
 
 @dataclass
 class Loss:
@@ -243,10 +246,10 @@ class TrainerBase(L.LightningModule):
   def _process_model_output(self, model_output, xt, sigma):
     raise NotImplementedError
 
-  def forward(self, xt, sigma):
+  def forward(self, xt, sigma, prompt_embed=None):
     sigma = self._process_sigma(sigma)
     with torch.cuda.amp.autocast(dtype=torch.float32):
-      model_output = self.backbone(xt, sigma)
+      model_output = self.backbone(xt, sigma, prompt_embed=prompt_embed)
     return self._process_model_output(
       model_output=model_output, xt=xt, sigma=sigma)
 
@@ -352,14 +355,15 @@ class TrainerBase(L.LightningModule):
   def generate_samples(self, num_samples, num_steps, eps):
     raise NotImplementedError
 
-  def restore_model_and_sample(self, num_steps, eps=1e-5):
+  def restore_model_and_sample(self, num_steps, eps=1e-5, prompts=None):
     """Generate samples from the model."""
     # Lightning auto-casting is not working in this method for some reason
     self._eval_mode()
     samples = self.generate_samples(
       num_samples=self.config.loader.eval_batch_size,
       num_steps=num_steps,
-      eps=eps)
+      eps=eps,
+      prompts=prompts)
     self._train_mode()
     return samples
 
@@ -495,26 +499,37 @@ class Diffusion(TrainerBase):
 
   @torch.no_grad()
   def generate_samples(self, num_samples, num_steps=None,
-                       eps=1e-5):
+                       eps=1e-5, prompts=None):
     """Generate samples from the model."""
+    print(f"trainer_base: generate_samples: num_samples: {num_samples}, steps: {num_steps}, eps: {eps}")
+
     # Lightning auto-casting is not working in this method for some reason
     if num_steps is None:
       num_steps = self.config.sampling.steps
     x = self.prior_sample(num_samples, self.num_tokens)
+
+    print(f"trainer_base: generate_samples: prior_samples: {x.shape}, priors: {prompts.shape} num_steps: {num_steps}")
+
+    prompt_embed = None
+    if prompts is not None:
+      prompt_embed = self.backbone.vocab_embed(prompts)
+      print(f"trainer_base: generate_samples: prompt_embed: {prompt_embed.shape} {torch.max(prompt_embed)}")
+
     timesteps = torch.linspace(
       1, eps, num_steps + 1, device=self.device)
     dt = (1 - eps) / num_steps
     p_x0_cache = None
 
-    for i in range(num_steps):
+    start_time = time.time()
+    for i in tqdm(range(num_steps)):
       t = timesteps[i] * torch.ones(
         x.shape[0], 1, device=self.device)
       if self.sampler == 'ancestral':
         _, x = self._ancestral_update(
-          x=x, t=t, dt=dt, p_x0=None)
+          x=x, t=t, dt=dt, p_x0=None, prompt_embed=prompt_embed)
       elif self.sampler == 'ancestral_cache':
         p_x0_cache, x_next = self._ancestral_update(
-          x=x, t=t, dt=dt, p_x0=p_x0_cache)
+          x=x, t=t, dt=dt, p_x0=p_x0_cache, prompt_embed=prompt_embed)
         if (not torch.allclose(x_next, x)
             or self.time_conditioning):
           # Disable caching
@@ -535,6 +550,9 @@ class Diffusion(TrainerBase):
     elif self.config.sampling.noise_removal == 'greedy':
       sigma = self._sigma_from_alphat(self.noise(t0)[1])
       x = self.forward(xt=x, sigma=sigma).argmax(dim=-1)
+    end_time = time.time()
+    print(f"trainer_base: generate_samples: time: {end_time - start_time} {x.size(0)*x.size(1)} tokens {x.shape}")
+    print(f"trainer_base: generate_samples: x: {x}")
     return x
 
   @torch.no_grad
@@ -579,7 +597,7 @@ class Diffusion(TrainerBase):
             sequence_lengths)
 
   def restore_model_and_semi_ar_sample(
-      self, stride_length, num_strides, dt=0.001):
+      self, stride_length, num_strides, dt=0.001, prompts=None):
     """Generate samples from the model."""
     # Lightning auto-casting is not working in this method for some reason
     # TODO(subham): Test this method after refactoring.
