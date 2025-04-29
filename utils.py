@@ -373,3 +373,45 @@ if __name__ == "__main__":
     num_partitions=args.num_partitions,
     vocab_size=args.vocab_size,
     log10_num_points=args.log10_num_points)
+  
+
+class PromptState():
+    def overwrite_masked(self, x):
+      return x
+
+class Prompts(PromptState):
+  def __init__(self, tokenizer, config, device=None):
+    with open(config.sampling.prompts_path, 'r') as f:
+      prompts = f.readlines()
+    if len(prompts) < config.loader.eval_batch_size:
+       pad = ["<|endoftext|>"] * (config.loader.eval_batch_size - len(prompts))
+       prompts += pad
+    self._init(tokenizer, config.model.length, prompts, device)
+
+  def _init(self, tokenizer, num_tokens, prompts, device=None):
+    for prompt in prompts:
+      if prompt.startswith("<|endoftext|>"):
+        prompt = prompt[len("<|endoftext|>"):]
+      self.prompts.append(prompt)
+
+    tokenized = tokenizer.batch_encode_plus(prompts,
+                                            padding='max_length',
+                                            truncation=True,
+                                            add_special_tokens=True,
+                                            max_length=num_tokens,
+                                            return_tensors='pt')
+    self.tokenized = tokenized.input_ids
+    self.mask = tokenized.attention_mask.bool()
+
+    print(f"tokenized: {self.tokenized.shape}")
+    print(f"mask: {self.tokenized[:2,:10]}")
+    print(f"mask: {self.tokenized[4:6]}")
+
+    sys.exit()
+    if device is not None:
+      self.tokenized = self.tokenized.to(device)
+      self.mask = self.mask.to(device)
+
+  def overwrite_masked(self, x):
+    with_prompts = torch.where(self.mask, self.tokenized, x)
+    return with_prompts

@@ -658,6 +658,7 @@ def get_tokenizer(config):
       (tokenizer.bos_token, tokenizer.bos_token_id),
       (tokenizer.eos_token, tokenizer.eos_token_id))
 
+
   # For wrapped batches:
   #  [BOS] sent1 [EOS] sent2-fragment [EOS]
   #  [BOS] sent2-fragment [EOS] sent3 [EOS]

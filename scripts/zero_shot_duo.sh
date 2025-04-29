@@ -12,7 +12,7 @@
 #SBATCH --open-mode=append            # Do not overwrite logs
 #SBATCH --requeue                     # Requeue upon preemption
 
-checkpoint_path=/share/kuleshov/ssahoo/flow-ode/flow-ode-VlCQLK-small-conjugate-OWT-anneal/checkpoints/last.ckpt
+checkpoint_path=/cs224u/cache/duo-checkpoints/duo.ckpt
 
 export HYDRA_FULL_ERROR=1
 
@@ -25,7 +25,7 @@ datasets=("ag_news"
           "ptb"
           "lm1b-gpt2")
 for data in "${datasets[@]}"; do
-  echo "$data"
+  echo "dataset: $data"
   srun python -u -m main \
     mode=ppl_eval \
     loader.batch_size=16 \

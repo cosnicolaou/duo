@@ -49,7 +49,6 @@ class AR(trainer_base.TrainerBase):
       -1, output_tokens[:, :, None])[:, :, 0]
 
   def generate_samples(self, num_samples, **kwargs):
-    print(f"algo: AR generate_samples: num_samples: {num_samples}")
     # precompute token buffer
     num_pred_tokens = self.num_tokens - 1
     x = torch.zeros(
@@ -71,7 +70,6 @@ class AR(trainer_base.TrainerBase):
       y = (output[:, -1, :] + noise[:, i, :]).argmax(-1)
       x[:, i + 1] = y
     end_time = time.time()
-    print(f"algo: AR generate_samples: time: {end_time - start_time} {x.size(0)*x.size(1)} tokens {x.shape}")
     return x
 
   def _process_sigma(self, sigma):
@@ -376,7 +374,8 @@ class DUO_BASE(trainer_base.UniformState):
     return diffusion_loss
 
   def _ancestral_update(self, x, t, dt, p_x0=None,
-                   noise_removal_step=False, prompt_embed=None):
+                   noise_removal_step=False, prompt_state=None):
+    x = prompt_state.overwrite_masked(x)
     del p_x0
     _, alpha_t = self.noise(t)
     if noise_removal_step:
@@ -387,7 +386,7 @@ class DUO_BASE(trainer_base.UniformState):
     assert alpha_t.ndim == 2
     
     q_xs = self._compute_posterior(
-      x=self.forward(x, sigma_t, prompt_embed=prompt_embed).exp(),
+      x=self.forward(x, sigma_t).exp(),
       xt=x,
       alpha_s=alpha_s,
       alpha_t=alpha_t)

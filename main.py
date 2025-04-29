@@ -1,6 +1,6 @@
 import json
 import os
-
+import time
 import fsspec
 import hydra
 import lightning as L
@@ -84,15 +84,6 @@ def _print_batch(train_ds, valid_ds, tokenizer, k=64):
     print('ids:', last)
 
 
-def _get_prior_samples(tokenizer, prompts, max_length):
-  print(f"prompts: {prompts}")
-  x = tokenizer.batch_encode_plus(prompts,
-                                  padding='max_length', 
-                                  truncation=True,
-                                  max_length=max_length,
-                                  return_tensors='pt')
-  return x.input_ids
-
 def _generate_samples(diffusion_model, config, logger,
                       tokenizer):
   logger.info('Starting Sample Eval.')
@@ -100,8 +91,9 @@ def _generate_samples(diffusion_model, config, logger,
     diffusion_model=diffusion_model,
     config=config,
     tokenizer=tokenizer)
-  print(f"model: {model}")
-  #config.sampling.steps = 1
+
+  start_time = time.time()
+
   model.metrics.gen_ppl.reset()
   model.metrics.sample_entropy.reset()
   if config.eval.disable_ema:
@@ -110,10 +102,9 @@ def _generate_samples(diffusion_model, config, logger,
   stride_length = config.sampling.stride_length
   num_strides = config.sampling.num_strides
   all_samples = []
-  print(f"config.sampling.num_sample_batches: {config.sampling.num_sample_batches} {config.sampling.semi_ar} {config.model.length}")
-  config.sampling.num_sample_batches = 1
-  prompts = ['write me an essay about the importance of good sleep'] * config.loader.eval_batch_size
-  tokenized_prompts = _get_prior_samples(tokenizer, prompts, config.model.length)
+
+  prompt_state = utils.PromptState() # empty prompt state
+ 
   for _ in range(config.sampling.num_sample_batches):
     if config.sampling.semi_ar:
       _, intermediate_samples, _ = model.restore_model_and_semi_ar_sample(
@@ -128,12 +119,21 @@ def _generate_samples(diffusion_model, config, logger,
       # any text after the first EOS token.
     else:
       samples = model.restore_model_and_sample(
-        num_steps=config.sampling.steps, prompts=tokenized_prompts)
+        num_steps=config.sampling.steps, prompt_state=prompt_state)
       model.metrics.record_entropy(samples)
       text_samples = model.tokenizer.batch_decode(samples)
       model.metrics.record_generative_perplexity(
         text_samples, config.model.length, model.device)
       all_samples.extend(list(text_samples))
+
+  time_taken = time.time() - start_time
+
+  tokens = 0
+  for sample in all_samples:
+    tokens += len(sample)
+
+  print(f"time_taken: {time_taken} seconds, total_tokens: {tokens}, tokens/second: {tokens / time_taken}")
+
   generative_ppl = 0.
   entropy = 0.
   if not config.sampling.semi_ar:
@@ -159,6 +159,7 @@ def _eval_ppl(diffusion_model, config, logger, tokenizer):
     logger.info('Disabling EMA.')
     model.ema = None
 
+  print(model)
   wandb_logger = None
   if config.get('wandb', None) is not None:
     wandb_logger = L.pytorch.loggers.WandbLogger(
@@ -176,9 +177,61 @@ def _eval_ppl(diffusion_model, config, logger, tokenizer):
     logger=wandb_logger)
   _, valid_ds = dataloader.get_dataloaders(
     config, tokenizer, skip_train=True, valid_seed=config.seed)
-  print(f"model: {model}")
   trainer.validate(model, valid_ds)
 
+
+def _chat(diffusion_model, config, logger, tokenizer):
+  logger.info('Starting Chat Eval.')
+  model = _load_from_checkpoint(
+    diffusion_model=diffusion_model,
+    config=config,
+    tokenizer=tokenizer)
+
+  model.metrics.gen_ppl.reset()
+  model.metrics.sample_entropy.reset()
+  if config.eval.disable_ema:
+    logger.info('Disabling EMA.')
+    model.ema = None
+  stride_length = config.sampling.stride_length
+  num_strides = config.sampling.num_strides
+  all_samples = []
+
+  # Provide prompts to guide generation
+  prompt_state = utils.Prompts(tokenizer, config, device=model.device)
+
+  for _ in range(config.sampling.num_sample_batches):
+    if config.sampling.semi_ar:
+      _, intermediate_samples, _ = model.restore_model_and_semi_ar_sample(
+        stride_length=stride_length,
+        num_strides=num_strides,
+        dt=1 / config.sampling.steps)
+      text_samples = intermediate_samples[-1]
+      # Note: Samples generated using semi-ar method
+      # need to to be processed before computing generative perplexity
+      # since these samples contain numerous <|endoftext|> tokens
+      # and diffusion.compute_generative_perplexity() discards
+      # any text after the first EOS token.
+    else:
+      samples = model.restore_model_and_sample(
+        num_steps=config.sampling.steps, prompt_state=prompt_state)
+      model.metrics.record_entropy(samples)
+      text_samples = model.tokenizer.batch_decode(samples)
+      model.metrics.record_generative_perplexity(
+        text_samples, config.model.length, model.device)
+      all_samples.extend(list(text_samples))
+  generative_ppl = 0.
+  entropy = 0.
+  if not config.sampling.semi_ar:
+    generative_ppl = model.metrics.gen_ppl.compute().item()
+    entropy = model.metrics.sample_entropy.compute().item()
+    print('Generative perplexity:', generative_ppl)
+    print('Sample entropy:', entropy)
+  samples_path = config.eval.generated_samples_path
+  with fsspec.open(samples_path, 'w') as f:
+    json.dump({'generative_ppl': generative_ppl,
+               'entropy': entropy,
+               'generated_seqs': all_samples}, f, indent=4)
+  print('Samples saved at:', samples_path)
 
 def _train(diffusion_model, config, logger, tokenizer):
   logger.info('Starting Training.')
@@ -261,6 +314,8 @@ def main(config):
     _generate_samples(**kwargs)
   elif config.mode == 'ppl_eval':
     _eval_ppl(**kwargs)
+  elif config.mode == 'chat':
+    _chat(**kwargs)
   else:
     _train(**kwargs)
 
