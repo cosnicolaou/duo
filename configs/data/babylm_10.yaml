@@ -1,0 +1,8 @@
+train: vesteinn/babylm
+valid: vesteinn/babylm
+tokenizer_name_or_path: babylm/ltgbert-10m-2024
+cache_dir: /cs224u/cache/textdiffusion/data
+wrap: False
+streaming: False
+insert_train_eos: True
+insert_valid_eos: True
