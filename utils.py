@@ -380,38 +380,89 @@ class PromptState():
       return x
 
 class Prompts(PromptState):
-  def __init__(self, tokenizer, config, device=None):
-    with open(config.sampling.prompts_path, 'r') as f:
-      prompts = f.readlines()
-    if len(prompts) < config.loader.eval_batch_size:
-       pad = ["<|endoftext|>"] * (config.loader.eval_batch_size - len(prompts))
-       prompts += pad
-    self._init(tokenizer, config.model.length, prompts, device)
+    def __init__(self, tokenizer, config, device=None):
+        self.device = device
+        self.mask_str = "¶"
+        enc = tokenizer.encode(self.mask_str, add_special_tokens=False)
+        self.mask_token_id = enc[0]
+        with open(config.sampling.prompts_path, 'r') as f:
+            prompts = f.readlines()
+        prompts = [p.strip() for p in prompts]
+        #prompts = self._pad_to_batch(prompts, config.loader.eval_batch_size)
+        self._tokenize(tokenizer, config.model.length, prompts)
 
-  def _init(self, tokenizer, num_tokens, prompts, device=None):
-    for prompt in prompts:
-      if prompt.startswith("<|endoftext|>"):
-        prompt = prompt[len("<|endoftext|>"):]
-      self.prompts.append(prompt)
+    def _pad_to_batch(self, prompts, batch_size):
+        if len(prompts) < batch_size:
+            pad = [""] * (batch_size - len(prompts))
+            prompts += pad
+        return prompts
+    
+    def _handle_trailing_prompt(self, prompt, num_tokens):
+        if not prompt.startswith("<|endoftext|>") or prompt == "<|endoftext|>":
+            return prompt
+        p = prompt[len("<|endoftext|>"):]
+        np = [self.mask_str] * (num_tokens - len(p))
+        np.append(p)
+        return "".join(np)
 
-    tokenized = tokenizer.batch_encode_plus(prompts,
+    def _handle_masked_prompt(self, prompt, num_tokens):
+        if not "<|mask|>" in prompt:
+            return prompt
+        parts = prompt.split("<|mask|>")
+        trailing = parts[1].split(":")
+        n = int(trailing[0]) # hack
+        mask = self.mask_str * n
+        return ''.join([parts[0], mask, trailing[1]])
+
+    def _tokenize(self, tokenizer, num_tokens, prompts):
+        self.prompts = []
+    
+        for prompt in prompts:
+            prompt = self._handle_trailing_prompt(prompt, num_tokens)
+            prompt = self._handle_masked_prompt(prompt, num_tokens)
+            self.prompts.append(prompt)
+
+        tokenized = tokenizer.batch_encode_plus(self.prompts,
                                             padding='max_length',
                                             truncation=True,
                                             add_special_tokens=True,
                                             max_length=num_tokens,
                                             return_tensors='pt')
-    self.tokenized = tokenized.input_ids
-    self.mask = tokenized.attention_mask.bool()
+        self.tokenized = tokenized.input_ids
+        self.mask = tokenized.attention_mask.bool()
 
-    print(f"tokenized: {self.tokenized.shape}")
-    print(f"mask: {self.tokenized[:2,:10]}")
-    print(f"mask: {self.tokenized[4:6]}")
+        input_mask = self.tokenized == self.mask_token_id
+        self.mask = torch.logical_and(torch.logical_not(input_mask), self.mask)
+        
+        self.tokenized = self.tokenized.to(self.device)
+        self.mask = self.mask.to(self.device)
 
-    sys.exit()
-    if device is not None:
-      self.tokenized = self.tokenized.to(device)
-      self.mask = self.mask.to(device)
+        for i, p in enumerate(self.prompts):
+            print(f"prompt: {p}")
+        #    print(f"mask: {self.mask[i]}")
 
-  def overwrite_masked(self, x):
-    with_prompts = torch.where(self.mask, self.tokenized, x)
-    return with_prompts
+    def overwrite_masked(self, x):
+        with_prompts = torch.where(self.mask, self.tokenized, x)
+        return with_prompts
+
+
+def print_without_special(tokens, tokenizer):
+    txt = tokenizer.batch_decode(tokens)
+    eos = "<|endoftext|>"
+    for t in txt:
+      end = t[len(eos):].find(eos)
+      print(t[len(eos):len(eos)+end])
+
+
+class PromptDataset(torch.utils.data.Dataset):
+    def __init__(self, prompts_path, tokenizer, config, device=None):
+        self.prompt_state = Prompts(tokenizer, config, device=None)
+        self.prompts = self.prompt_state.prompts
+        self.tokenized = self.prompt_state.tokenized
+        self.mask = self.prompt_state.mask
+
+    def __len__(self):
+        return len(self.prompts)
+    
+    def __getitem__(self, idx):
+        return (self.tokenized[idx], self.mask[idx])

@@ -354,7 +354,7 @@ class TrainerBase(L.LightningModule):
   def generate_samples(self, num_samples, num_steps, eps):
     raise NotImplementedError
 
-  def restore_model_and_sample(self, num_steps, eps=1e-5, prompt_state=None):
+  def restore_model_and_sample(self, num_steps, eps=1e-5):
     """Generate samples from the model."""
     # Lightning auto-casting is not working in this method for some reason
     self._eval_mode()
@@ -508,9 +508,12 @@ class Diffusion(TrainerBase):
     """Generate samples from the model."""
 
     # Lightning auto-casting is not working in this method for some reason
+
     if num_steps is None:
       num_steps = self.config.sampling.steps
     x = self.prior_sample(num_samples, self.num_tokens)
+
+    print(f"x: {x.shape} {num_samples} {num_steps}")
 
     timesteps = torch.linspace(
       1, eps, num_steps + 1, device=self.device)
@@ -520,20 +523,30 @@ class Diffusion(TrainerBase):
     for i in tqdm(range(num_steps)):
       t = timesteps[i] * torch.ones(
         x.shape[0], 1, device=self.device)
+
+      # only works for one batch.
+      x = prompt_state.overwrite_masked(x)
+      #utils.print_without_special(x, self.tokenizer)
+
       if self.sampler == 'ancestral':
         _, x = self._ancestral_update(
-          x=x, t=t, dt=dt, p_x0=None, prompt_state=prompt_state)
+          x=x, t=t, dt=dt, p_x0=None)
       elif self.sampler == 'ancestral_cache':
         p_x0_cache, x_next = self._ancestral_update(
-          x=x, t=t, dt=dt, p_x0=p_x0_cache, prompt_state=prompt_state)
+          x=x, t=t, dt=dt, p_x0=p_x0_cache)
         if (not torch.allclose(x_next, x)
             or self.time_conditioning):
           # Disable caching
           p_x0_cache = None
         x = x_next
       else:
-        x = self._analytic_update(x=x,t=t, dt=dt, prompt_state=prompt_state)
-      
+        x = self._analytic_update(x=x,t=t, dt=dt)
+
+    
+    # only works for one batch.
+    x = prompt_state.overwrite_masked(x)
+    #utils.print_without_special(x, self.tokenizer)
+
     t0 = timesteps[-1] * torch.ones(x.shape[0], 1,
                                     device=self.device)
     if self.config.sampling.noise_removal == 'ancestral':
@@ -542,12 +555,12 @@ class Diffusion(TrainerBase):
       else:
         _, x = self._ancestral_update(x=x, t=t0, dt=None,
                                  p_x0=p_x0_cache,
-                                 noise_removal_step=True,
-                                 prompt_state=prompt_state)
+                                 noise_removal_step=True)
     elif self.config.sampling.noise_removal == 'greedy':
       sigma = self._sigma_from_alphat(self.noise(t0)[1])
       x = self.forward(xt=x, sigma=sigma).argmax(dim=-1)
 
+    utils.print_without_special(x, self.tokenizer)
     return x
 
   @torch.no_grad

@@ -12,6 +12,7 @@ import torch
 import algo
 import dataloader
 import utils
+from tqdm import tqdm
 
 omegaconf.OmegaConf.register_new_resolver(
   'cwd', os.getcwd)
@@ -181,6 +182,10 @@ def _eval_ppl(diffusion_model, config, logger, tokenizer):
 
 
 def _chat(diffusion_model, config, logger, tokenizer):
+  if config.sampling.semi_ar:
+    raise ValueError("Semi-AR is not supported for chat.")
+
+  # CURRENTLY ONLY WORKS FOR DUO
   logger.info('Starting Chat Eval.')
   model = _load_from_checkpoint(
     diffusion_model=diffusion_model,
@@ -198,20 +203,20 @@ def _chat(diffusion_model, config, logger, tokenizer):
 
   # Provide prompts to guide generation
   prompt_state = utils.Prompts(tokenizer, config, device=model.device)
+  num_batches = len(prompt_state.prompts)//config.loader.eval_batch_size
 
-  for _ in range(config.sampling.num_sample_batches):
-    if config.sampling.semi_ar:
-      _, intermediate_samples, _ = model.restore_model_and_semi_ar_sample(
-        stride_length=stride_length,
-        num_strides=num_strides,
-        dt=1 / config.sampling.steps)
-      text_samples = intermediate_samples[-1]
-      # Note: Samples generated using semi-ar method
-      # need to to be processed before computing generative perplexity
-      # since these samples contain numerous <|endoftext|> tokens
-      # and diffusion.compute_generative_perplexity() discards
-      # any text after the first EOS token.
-    else:
+  print(f"len(prompt_state.prompts): {len(prompt_state.prompts)}, {config.loader.eval_batch_size}  num_batches: {num_batches}")
+
+  ds = utils.PromptDataset(config.sampling.prompts_path, tokenizer, config, device=model.device)
+  dl = torch.utils.data.DataLoader(ds, batch_size=config.loader.eval_batch_size, shuffle=False)
+  for batch in tqdm(dl):
+     
+      samples = model.generate_samples(
+      num_samples=config.loader.eval_batch_size,
+      num_steps=config.sampling.steps,
+      eps=config.training.sampling_eps,
+      prompt_state=prompt_state)
+
       samples = model.restore_model_and_sample(
         num_steps=config.sampling.steps, prompt_state=prompt_state)
       model.metrics.record_entropy(samples)
@@ -219,6 +224,9 @@ def _chat(diffusion_model, config, logger, tokenizer):
       model.metrics.record_generative_perplexity(
         text_samples, config.model.length, model.device)
       all_samples.extend(list(text_samples))
+
+  print(f"all_samples: {len(all_samples)}")
+
   generative_ppl = 0.
   entropy = 0.
   if not config.sampling.semi_ar:

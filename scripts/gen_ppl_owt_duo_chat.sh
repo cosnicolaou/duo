@@ -45,4 +45,5 @@ srun python -u -m main \
   sampling.prompts_path=$prompts_path \
   sampling.steps=$steps \
   eval.checkpoint_path=$checkpoint_path/$ckpt.ckpt \
-  eval.generated_samples_path=$checkpoint_path/samples_ancestral/$seed-$steps-ckpt-$ckpt-chat.json
+  eval.generated_samples_path=$checkpoint_path/samples_ancestral/$seed-$steps-ckpt-$ckpt-chat.json \
+  loader.eval_batch_size=1

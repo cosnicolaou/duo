@@ -11,7 +11,6 @@ import torch.nn.functional as F
 import trainer_base
 import utils
 
-import time
 from tqdm import tqdm
 
 class AR(trainer_base.TrainerBase):
@@ -62,14 +61,12 @@ class AR(trainer_base.TrainerBase):
              .to(self.device))
     if self.config.sampling.use_float64:
       noise = noise.to(torch.float64)
-    start_time = time.time()
     for i in tqdm(range(num_pred_tokens)):
       output = self.backbone(x[:, :i + 1], None)
       output[:, :, self.mask_index] = self.neg_infinity
       output = output.log_softmax(-1)
       y = (output[:, -1, :] + noise[:, i, :]).argmax(-1)
       x[:, i + 1] = y
-    end_time = time.time()
     return x
 
   def _process_sigma(self, sigma):
@@ -374,8 +371,7 @@ class DUO_BASE(trainer_base.UniformState):
     return diffusion_loss
 
   def _ancestral_update(self, x, t, dt, p_x0=None,
-                   noise_removal_step=False, prompt_state=None):
-    x = prompt_state.overwrite_masked(x)
+                   noise_removal_step=False):
     del p_x0
     _, alpha_t = self.noise(t)
     if noise_removal_step:
@@ -384,7 +380,7 @@ class DUO_BASE(trainer_base.UniformState):
       _, alpha_s = self.noise(t - dt)
     sigma_t = self._sigma_from_alphat(alpha_t)
     assert alpha_t.ndim == 2
-    
+
     q_xs = self._compute_posterior(
       x=self.forward(x, sigma_t).exp(),
       xt=x,
@@ -393,7 +389,6 @@ class DUO_BASE(trainer_base.UniformState):
     if self.p_nucleus < 1:
       q_xs = utils.top_k_top_p_filtering(
         q_xs.log(), top_p=self.p_nucleus)
-      
     return None, trainer_base.sample_categorical(q_xs)
 
 
