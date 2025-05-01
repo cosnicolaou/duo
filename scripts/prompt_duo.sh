@@ -36,14 +36,13 @@ echo "  ckpt: $ckpt"
 echo "  prompts_path: $prompts_path"
 
 srun python -u -m main \
-  mode=chat \
+  mode=prompt \
   seed=$seed \
   loader.batch_size=2 \
-  loader.eval_batch_size=8 \
+  loader.eval_batch_size=1 \
   algo=duo_base \
   model=small \
   sampling.prompts_path=$prompts_path \
   sampling.steps=$steps \
   eval.checkpoint_path=$checkpoint_path/$ckpt.ckpt \
-  eval.generated_samples_path=$checkpoint_path/samples_ancestral/$seed-$steps-ckpt-$ckpt-chat.json \
-  loader.eval_batch_size=1
+  eval.generated_samples_path=$checkpoint_path/samples_ancestral/$seed-$steps-ckpt-$ckpt-prompt.json \

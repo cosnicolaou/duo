@@ -375,11 +375,7 @@ if __name__ == "__main__":
     log10_num_points=args.log10_num_points)
   
 
-class PromptState():
-    def overwrite_masked(self, x):
-      return x
-
-class Prompts(PromptState):
+class Prompts():
     def __init__(self, tokenizer, config, device=None):
         self.device = device
         self.mask_str = "¶"
@@ -388,7 +384,7 @@ class Prompts(PromptState):
         with open(config.sampling.prompts_path, 'r') as f:
             prompts = f.readlines()
         prompts = [p.strip() for p in prompts]
-        #prompts = self._pad_to_batch(prompts, config.loader.eval_batch_size)
+        prompts = self._pad_to_batch(prompts, config.loader.eval_batch_size)
         self._tokenize(tokenizer, config.model.length, prompts)
 
     def _pad_to_batch(self, prompts, batch_size):
@@ -446,17 +442,18 @@ class Prompts(PromptState):
         return with_prompts
 
 
-def print_without_special(tokens, tokenizer):
+def without_special(tokens, tokenizer):
     txt = tokenizer.batch_decode(tokens)
     eos = "<|endoftext|>"
+    out = []
     for t in txt:
       end = t[len(eos):].find(eos)
-      print(t[len(eos):len(eos)+end])
-
+      out.append(t[len(eos):len(eos)+end])
+    return out
 
 class PromptDataset(torch.utils.data.Dataset):
     def __init__(self, prompts_path, tokenizer, config, device=None):
-        self.prompt_state = Prompts(tokenizer, config, device=None)
+        self.prompt_state = Prompts(tokenizer, config, device=device)
         self.prompts = self.prompt_state.prompts
         self.tokenized = self.prompt_state.tokenized
         self.mask = self.prompt_state.mask

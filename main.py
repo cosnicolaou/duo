@@ -93,8 +93,6 @@ def _generate_samples(diffusion_model, config, logger,
     config=config,
     tokenizer=tokenizer)
 
-  start_time = time.time()
-
   model.metrics.gen_ppl.reset()
   model.metrics.sample_entropy.reset()
   if config.eval.disable_ema:
@@ -104,8 +102,8 @@ def _generate_samples(diffusion_model, config, logger,
   num_strides = config.sampling.num_strides
   all_samples = []
 
-  prompt_state = utils.PromptState() # empty prompt state
- 
+  start_time = time.time()
+
   for _ in range(config.sampling.num_sample_batches):
     if config.sampling.semi_ar:
       _, intermediate_samples, _ = model.restore_model_and_semi_ar_sample(
@@ -120,7 +118,7 @@ def _generate_samples(diffusion_model, config, logger,
       # any text after the first EOS token.
     else:
       samples = model.restore_model_and_sample(
-        num_steps=config.sampling.steps, prompt_state=prompt_state)
+        num_steps=config.sampling.steps)
       model.metrics.record_entropy(samples)
       text_samples = model.tokenizer.batch_decode(samples)
       model.metrics.record_generative_perplexity(
@@ -128,7 +126,6 @@ def _generate_samples(diffusion_model, config, logger,
       all_samples.extend(list(text_samples))
 
   time_taken = time.time() - start_time
-
   tokens = 0
   for sample in all_samples:
     tokens += len(sample)
@@ -181,11 +178,12 @@ def _eval_ppl(diffusion_model, config, logger, tokenizer):
   trainer.validate(model, valid_ds)
 
 
-def _chat(diffusion_model, config, logger, tokenizer):
+def _prompt(diffusion_model, config, logger, tokenizer):
   if config.sampling.semi_ar:
     raise ValueError("Semi-AR is not supported for chat.")
 
   # CURRENTLY ONLY WORKS FOR DUO
+
   logger.info('Starting Chat Eval.')
   model = _load_from_checkpoint(
     diffusion_model=diffusion_model,
@@ -201,31 +199,28 @@ def _chat(diffusion_model, config, logger, tokenizer):
   num_strides = config.sampling.num_strides
   all_samples = []
 
-  # Provide prompts to guide generation
-  prompt_state = utils.Prompts(tokenizer, config, device=model.device)
-  num_batches = len(prompt_state.prompts)//config.loader.eval_batch_size
-
-  print(f"len(prompt_state.prompts): {len(prompt_state.prompts)}, {config.loader.eval_batch_size}  num_batches: {num_batches}")
-
   ds = utils.PromptDataset(config.sampling.prompts_path, tokenizer, config, device=model.device)
   dl = torch.utils.data.DataLoader(ds, batch_size=config.loader.eval_batch_size, shuffle=False)
-  for batch in tqdm(dl):
-     
-      samples = model.generate_samples(
-      num_samples=config.loader.eval_batch_size,
-      num_steps=config.sampling.steps,
-      eps=config.training.sampling_eps,
-      prompt_state=prompt_state)
 
+  for (tokenized, mask) in dl:
+      #print(f"xx: {utils.without_special(tokenized, tokenizer)}")
+      def projection_fn(x):
+        return torch.where(mask, tokenized, x)
+      #xxx = utils.without_special(projection_fn(tokenized), tokenizer)
+      #print(f"xxx: {xxx}")
+      #continue
       samples = model.restore_model_and_sample(
-        num_steps=config.sampling.steps, prompt_state=prompt_state)
+        num_steps=config.sampling.steps, projection_fn=projection_fn)
       model.metrics.record_entropy(samples)
-      text_samples = model.tokenizer.batch_decode(samples)
+      #text_samples = model.tokenizer.batch_decode(samples)
+      text_samples = utils.without_special(samples, tokenizer)
+      print(f"text_samples: {text_samples}")
+
       model.metrics.record_generative_perplexity(
         text_samples, config.model.length, model.device)
       all_samples.extend(list(text_samples))
 
-  print(f"all_samples: {len(all_samples)}")
+  #utils.print_without_special(samples, tokenizer)
 
   generative_ppl = 0.
   entropy = 0.
@@ -322,8 +317,8 @@ def main(config):
     _generate_samples(**kwargs)
   elif config.mode == 'ppl_eval':
     _eval_ppl(**kwargs)
-  elif config.mode == 'chat':
-    _chat(**kwargs)
+  elif config.mode == 'prompt':
+    _prompt(**kwargs)
   else:
     _train(**kwargs)
 

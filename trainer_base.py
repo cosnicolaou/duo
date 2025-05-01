@@ -354,7 +354,7 @@ class TrainerBase(L.LightningModule):
   def generate_samples(self, num_samples, num_steps, eps):
     raise NotImplementedError
 
-  def restore_model_and_sample(self, num_steps, eps=1e-5):
+  def restore_model_and_sample(self, num_steps, eps=1e-5, projection_fn=lambda x: x):
     """Generate samples from the model."""
     # Lightning auto-casting is not working in this method for some reason
     self._eval_mode()
@@ -362,7 +362,7 @@ class TrainerBase(L.LightningModule):
       num_samples=self.config.loader.eval_batch_size,
       num_steps=num_steps,
       eps=eps,
-      prompt_state=prompt_state)
+      projection_fn=projection_fn)
     self._train_mode()
     return samples
 
@@ -504,7 +504,7 @@ class Diffusion(TrainerBase):
 
   @torch.no_grad()
   def generate_samples(self, num_samples, num_steps=None,
-                       eps=1e-5, prompt_state=None):
+                       eps=1e-5, projection_fn=lambda x: x):
     """Generate samples from the model."""
 
     # Lightning auto-casting is not working in this method for some reason
@@ -513,20 +513,19 @@ class Diffusion(TrainerBase):
       num_steps = self.config.sampling.steps
     x = self.prior_sample(num_samples, self.num_tokens)
 
-    print(f"x: {x.shape} {num_samples} {num_steps}")
-
     timesteps = torch.linspace(
       1, eps, num_steps + 1, device=self.device)
     dt = (1 - eps) / num_steps
     p_x0_cache = None
 
+#    xx = projection_fn(x)
+#    xx = utils.without_special(xx, self.tokenizer)
+#    print(f"xxxx: {xx}")
     for i in tqdm(range(num_steps)):
       t = timesteps[i] * torch.ones(
         x.shape[0], 1, device=self.device)
 
-      # only works for one batch.
-      x = prompt_state.overwrite_masked(x)
-      #utils.print_without_special(x, self.tokenizer)
+      x = projection_fn(x)
 
       if self.sampler == 'ancestral':
         _, x = self._ancestral_update(
@@ -542,10 +541,8 @@ class Diffusion(TrainerBase):
       else:
         x = self._analytic_update(x=x,t=t, dt=dt)
 
-    
-    # only works for one batch.
-    x = prompt_state.overwrite_masked(x)
-    #utils.print_without_special(x, self.tokenizer)
+  
+    x = projection_fn(x)
 
     t0 = timesteps[-1] * torch.ones(x.shape[0], 1,
                                     device=self.device)
@@ -560,7 +557,6 @@ class Diffusion(TrainerBase):
       sigma = self._sigma_from_alphat(self.noise(t0)[1])
       x = self.forward(xt=x, sigma=sigma).argmax(dim=-1)
 
-    utils.print_without_special(x, self.tokenizer)
     return x
 
   @torch.no_grad
