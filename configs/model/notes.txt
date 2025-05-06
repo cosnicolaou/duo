@@ -1,0 +1,3 @@
+Here’s what you should do for MDLM or DUO: Let z_T be a sample from the prior (all masked tokens for MDLM and random tokens for DUO). Then, replace the first m tokens in z_T with the prompt tokens and run regular denoising. However, after every denoising step, you must manually reset the first m tokens to the prompt tokens.
+
+For MDLM, this extra step isn’t necessary because the unmasked tokens remain fixed. But for DUO, it is important—you need to ensure the prompt tokens stay unchanged throughout the sampling process.
