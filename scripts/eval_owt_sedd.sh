@@ -25,4 +25,5 @@ srun python -u -m main \
   algo=sedd \
   eval.checkpoint_path=$checkpoint_path \
   sampling.num_sample_batches=0 \
+  sampling.predictor=analytic \
   +wandb.offline=true

@@ -518,9 +518,6 @@ class Diffusion(TrainerBase):
     dt = (1 - eps) / num_steps
     p_x0_cache = None
 
-#    xx = projection_fn(x)
-#    xx = utils.without_special(xx, self.tokenizer)
-#    print(f"xxxx: {xx}")
     for i in tqdm(range(num_steps)):
       t = timesteps[i] * torch.ones(
         x.shape[0], 1, device=self.device)

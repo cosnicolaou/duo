@@ -19,6 +19,7 @@ import torch
 import transformers
 
 import utils
+import sentiment
 
 LOGGER = utils.get_logger(__name__)
 
@@ -436,9 +437,6 @@ def get_dataset(dataset_name,
   LOGGER.info(f'Generating new data at: {_path}')
   LOGGER.info(f'{streaming=}')
 
-
-  print(f"dataset_name: {dataset_name}")
-
   crop_train = dataset_name == 'text8-crop'
   if mode == 'train' and crop_train:
     # double block size for sub-sampling
@@ -519,6 +517,13 @@ def get_dataset(dataset_name,
       seq_len=32,
       vocab_size=256,
     )
+  elif dataset_name == 'sentiment':
+    assert not wrap
+    assert revision is None
+    dataset = sentiment.load_sentiment_dataset(
+      cache_dir=cache_dir,
+      streaming=streaming,
+      revision=revision)
   else:
     print(f"load dataset name: {dataset_name}")
     dataset = datasets.load_dataset(
@@ -617,6 +622,7 @@ def get_dataset(dataset_name,
     tokenized_dataset = tokenized_dataset.remove_columns(
       'text')
 
+  print(f"tokenized_dataset: {tokenized_dataset} wrap: {wrap}")
   if not wrap:
     if not streaming:
       tokenized_dataset.save_to_disk(_path)
@@ -698,6 +704,8 @@ def get_dataloaders(config, tokenizer, skip_train=False,
     raise ValueError(
       f'Eval Batch Size for {config.eval.batch_size} '
       f'not divisible by {num_gpus}.')
+
+  print(f"get_dataloaders: {config.data.train} {config.data.valid}")
   if skip_train:
     train_set = None
   else:

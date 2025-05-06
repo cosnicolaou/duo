@@ -12,7 +12,8 @@
 #SBATCH --open-mode=append            # Do not overwrite logs
 #SBATCH --requeue                     # Requeue upon preemption
 
-checkpoint_path=/share/kuleshov/ssahoo/textdiffusion/text-diffusion-exp-v4-nBm2gE-small-param-sedd_data-openwebtext-split_seqlen-1024_maxs-1300001_bs-512/checkpoints/last.ckpt
+checkpoint_path=/cs224u/cache/duo-checkpoints/sedd.ckpt
+
 
 export HYDRA_FULL_ERROR=1
 
@@ -25,11 +26,11 @@ datasets=("ag_news"
           "ptb"
           "lm1b-gpt2")
 for data in "${datasets[@]}"; do
-  echo "$data"
+  echo "dataset:$data"
   srun python -u -m main \
     mode=ppl_eval \
-    loader.batch_size=16 \
-    loader.eval_batch_size=16 \
+    loader.batch_size=8 \
+    loader.eval_batch_size=8 \
     loader.eval_global_batch_size=128 \
     data="$data" \
     data.insert_valid_eos=False \
@@ -37,5 +38,6 @@ for data in "${datasets[@]}"; do
     algo=sedd \
     model.length=1024 \
     eval.checkpoint_path=$checkpoint_path \
+    sampling.predictor=analytic \
     +wandb.offline=true
 done

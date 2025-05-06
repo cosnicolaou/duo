@@ -27,6 +27,7 @@ done
 
 checkpoint_path=/cs224u/cache/duo-checkpoints
 
+
 steps=${steps:-32}
 seed=${seed:-1}
 prompts_path=${prompts_path:-"/cs224u/duo/prompts.txt"}
@@ -39,7 +40,7 @@ srun python -u -m main \
   mode=prompt \
   seed=$seed \
   loader.batch_size=2 \
-  loader.eval_batch_size=1 \
+  loader.eval_batch_size=2 \
   algo=duo_base \
   model=small \
   sampling.prompts_path=$prompts_path \

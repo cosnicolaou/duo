@@ -13,6 +13,8 @@ import algo
 import dataloader
 import utils
 from tqdm import tqdm
+import sentiment
+import prompt
 
 omegaconf.OmegaConf.register_new_resolver(
   'cwd', os.getcwd)
@@ -190,51 +192,8 @@ def _prompt(diffusion_model, config, logger, tokenizer):
     config=config,
     tokenizer=tokenizer)
 
-  model.metrics.gen_ppl.reset()
-  model.metrics.sample_entropy.reset()
-  if config.eval.disable_ema:
-    logger.info('Disabling EMA.')
-    model.ema = None
-  stride_length = config.sampling.stride_length
-  num_strides = config.sampling.num_strides
-  all_samples = []
-
-  ds = utils.PromptDataset(config.sampling.prompts_path, tokenizer, config, device=model.device)
-  dl = torch.utils.data.DataLoader(ds, batch_size=config.loader.eval_batch_size, shuffle=False)
-
-  for (tokenized, mask) in dl:
-      #print(f"xx: {utils.without_special(tokenized, tokenizer)}")
-      def projection_fn(x):
-        return torch.where(mask, tokenized, x)
-      #xxx = utils.without_special(projection_fn(tokenized), tokenizer)
-      #print(f"xxx: {xxx}")
-      #continue
-      samples = model.restore_model_and_sample(
-        num_steps=config.sampling.steps, projection_fn=projection_fn)
-      model.metrics.record_entropy(samples)
-      #text_samples = model.tokenizer.batch_decode(samples)
-      text_samples = utils.without_special(samples, tokenizer)
-      print(f"text_samples: {text_samples}")
-
-      model.metrics.record_generative_perplexity(
-        text_samples, config.model.length, model.device)
-      all_samples.extend(list(text_samples))
-
-  #utils.print_without_special(samples, tokenizer)
-
-  generative_ppl = 0.
-  entropy = 0.
-  if not config.sampling.semi_ar:
-    generative_ppl = model.metrics.gen_ppl.compute().item()
-    entropy = model.metrics.sample_entropy.compute().item()
-    print('Generative perplexity:', generative_ppl)
-    print('Sample entropy:', entropy)
-  samples_path = config.eval.generated_samples_path
-  with fsspec.open(samples_path, 'w') as f:
-    json.dump({'generative_ppl': generative_ppl,
-               'entropy': entropy,
-               'generated_seqs': all_samples}, f, indent=4)
-  print('Samples saved at:', samples_path)
+  prompt.prompt(model, config, logger, tokenizer)
+  
 
 def _train(diffusion_model, config, logger, tokenizer):
   logger.info('Starting Training.')
@@ -280,6 +239,13 @@ def _train(diffusion_model, config, logger, tokenizer):
     logger=wandb_logger)
   trainer.fit(model, train_ds, valid_ds, ckpt_path=ckpt_path)
 
+def _test_sentiment(diffusion_model, config, logger, tokenizer):
+  logger.info('Starting Sentiment Test.')
+  model = _load_from_checkpoint(
+    diffusion_model=diffusion_model,
+    config=config,
+    tokenizer=tokenizer)
+  sentiment.test_sentiment(model, config, logger, tokenizer)
 
 @hydra.main(version_base=None, config_path='configs',
             config_name='config')
@@ -319,6 +285,8 @@ def main(config):
     _eval_ppl(**kwargs)
   elif config.mode == 'prompt':
     _prompt(**kwargs)
+  elif config.mode == 'test_sentiment':
+    _test_sentiment(**kwargs)
   else:
     _train(**kwargs)
 
