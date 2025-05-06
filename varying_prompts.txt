@@ -1,34 +1,10 @@
 what word <|mask|>2: here?
-tell me what to <|mask|>2: to the party
-tell me <|mask|>2: the party is
-write a poem about <|mask|>2: the end
-there was a couple <|mask|>2: and the couple lived happily ever after
+tell me what to w<|mask|>2: to the party
+tell me w<|mask|>2: the party is
 what word <|mask|>4: here?
-tell me what to <|mask|>4: to the party
-tell me <|mask|>4: the party is
-write a poem about <|mask|>4: the end
-there was a couple <|mask|>4: and the couple lived happily ever after
-what word <|mask|>6: here?
-tell me what to <|mask|>6: to the party
-tell me <|mask|>6: the party is
-write a poem about <|mask|>6: the end
-there was a couple <|mask|>6: and the couple lived happily ever after
-what word <|mask|>8: here?
-tell me what to <|mask|>8: to the party
-tell me <|mask|>8: the party is
-write a poem about <|mask|>8: the end
-there was a couple <|mask|>8: and the couple lived happily ever after
-what word <|mask|>10: here?
-tell me what to <|mask|>10: to the party
-tell me <|mask|>10: the party is
-write a poem about <|mask|>10: the end
-there was a couple <|mask|>10: and the couple lived happily ever after
-what word <|mask|>20: here?
-tell me what to <|mask|>20: to the party
-tell me <|mask|>20: the party is
-write a poem about <|mask|>20: the end
-there was a couple <|mask|>20: and the couple lived happily ever after
-write a poem about <|mask|>50: the end
-there was a couple <|mask|>50: and the couple lived happily ever after
-write a poem about <|mask|>100: the end
-there was a couple <|mask|>100: and the couple lived happily ever after
+tell me what to w<|mask|>4: to the party
+tell me w<|mask|>4: the party is
+write a poem about a whale <|mask|>10: the end
+write a poem about a whale <|mask|>20: the end
+write a poem about a whale <|mask|>40: the end
+write a poem about a whale <|mask|>60: the end
